@@ -1,7 +1,7 @@
 {
-  "name": "node-binance-api",
-  "version": "0.9.9",
-  "description": "Binance API for node https://github.com/tuxitor/node-bitkub-ws",
+  "name": "node-bitkub-ws",
+  "version": "0.0.1",
+  "description": "Bitkub websocket API for node https://github.com/tuxitor/node-bitkub-ws",
   "main": "node-bitkub-ws.js",
   "dependencies": {
     "ws": "^7.2.0"
