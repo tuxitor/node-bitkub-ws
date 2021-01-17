@@ -1,0 +1,20 @@
+{
+  "name": "node-binance-api",
+  "version": "0.9.9",
+  "description": "Binance API for node https://github.com/tuxitor/node-bitkub-ws",
+  "main": "node-bitkub-ws.js",
+  "dependencies": {
+    "ws": "^7.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/tuxitor/node-bitkub-ws.git"
+  },
+  "keywords": [
+    "binance",
+    "api"
+  ],
+  "author": "Tuxitor",
+  "license": "MIT",
+  }
+}
