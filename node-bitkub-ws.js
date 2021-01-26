@@ -141,7 +141,6 @@ let api = function Bitkub(options = {}) {
     ws.on('error', handleSocketError);
     ws.on('close', handleSocketClose.bind(ws, reconnect));
     ws.on('message', function (data) {
-      Bitkub.options.log(data);
       try {
         let json = JSON.parse(data);
         if (Bitkub.options.sanitize) {
@@ -368,9 +367,9 @@ let api = function Bitkub(options = {}) {
           subscription = subscribeCombined(streams, callback, reconnect);
         } else {
           let symbol;
-          if (Bitkub.options.sanitize) {
+          if (Bitkub.options.sanitize)
             symbol = 'market.ticker.' + (symbols.split('/')[1] + '_' + symbols.split('/')[0]);
-          } else
+          else
             symbol = symbols;
           subscription = subscribe(symbol.toLowerCase(), callback, reconnect);
         }
@@ -398,7 +397,11 @@ let api = function Bitkub(options = {}) {
           });
           subscription = subscribeCombined(streams, callback, reconnect);
         } else {
-          let symbol = symbols;
+          let symbol;
+          if (Bitkub.options.sanitize)
+            symbol = 'market.trade.' + (symbols.split('/')[1] + '_' + symbols.split('/')[0]);
+          else
+            symbol = symbols;
           subscription = subscribe(symbol.toLowerCase(), callback, reconnect);
         }
         return subscription.endpoint;
