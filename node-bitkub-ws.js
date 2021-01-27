@@ -24,9 +24,11 @@ let api = function Bitkub(options = {}) {
   const stream = "wss://api.bitkub.com/websocket-api/";
   Bitkub.subscriptions = {};
   const default_options = {
-    sanitize: false,
     reconnect: true,
     verbose: false,
+    sanitize: false,
+    ignoreTickers: false,
+    ignoreGlobalTickers: true,
     log: function (...args) {
       console.log(Array.prototype.slice.call(args));
     }
@@ -45,7 +47,6 @@ let api = function Bitkub(options = {}) {
    * @return {undefined}
    */
   const socketHeartbeat = function () {
-
     /* sockets removed from `subscriptions` during a manual terminate()
        will no longer be at risk of having functions called on them */
     for (let endpointId in Bitkub.subscriptions) {
@@ -130,7 +131,6 @@ let api = function Bitkub(options = {}) {
    */
   const subscribe = function (endpoint, callback, reconnect = false, opened_callback = false) {
     let ws = false;
-
     ws = new WebSocket(stream + endpoint);
     if (Bitkub.options.verbose) Bitkub.options.log('Bitkub: Subscribed to ' + endpoint);
     ws.reconnect = Bitkub.options.reconnect;
@@ -143,9 +143,8 @@ let api = function Bitkub(options = {}) {
     ws.on('message', function (data) {
       try {
         let json = JSON.parse(data);
-        if (Bitkub.options.sanitize) {
+        if (Bitkub.options.sanitize)
           json.symbol = json.stream.split('_')[1].toUpperCase() + '/THB';
-        }
         callback(json);
       } catch (error) {
         Bitkub.options.log('Bitkub: Parse error: ' + error.message);
@@ -166,7 +165,6 @@ let api = function Bitkub(options = {}) {
     const queryParams = streams.join(',');
     let ws = false;
     ws = new WebSocket(stream + queryParams);
-
     ws.reconnect = Bitkub.options.reconnect;
     ws.endpoint = queryParams;
     ws.isAlive = false;
@@ -180,12 +178,52 @@ let api = function Bitkub(options = {}) {
     ws.on('message', function (data) {
       try {
         let json = JSON.parse(data);
-        if (Bitkub.options.sanitize) {
+        if (Bitkub.options.sanitize)
           json.symbol = json.stream.split('_')[1].toUpperCase() + '/THB';
-        }
         callback(json);
       } catch (error) {
         Bitkub.options.log('CombinedStream: Parse error: ' + error.message);
+      }
+    });
+    return ws;
+  };
+
+  /**
+   * Used to subscribe to a single websocket endpoint
+   * @param {string} endpoint - endpoint to connect to
+   * @param {function} callback - the function to called when information is received
+   * @param {boolean} reconnect - whether to reconnect on disconnect
+   * @param {object} opened_callback - the function to called when opened
+   * @return {WebSocket} - websocket reference
+   */
+  const subscribeBook = function (endpoint, callback, reconnect = false, opened_callback = false) {
+    let ws = false;
+    ws = new WebSocket(stream + endpoint);
+    if (Bitkub.options.verbose) Bitkub.options.log('OrderBook: Subscribed to ' + endpoint);
+    ws.reconnect = Bitkub.options.reconnect;
+    ws.endpoint = endpoint;
+    ws.isAlive = false;
+    ws.on('open', handleSocketOpen.bind(ws, opened_callback));
+    ws.on('pong', handleSocketHeartbeat);
+    ws.on('error', handleSocketError);
+    ws.on('close', handleSocketClose.bind(ws, reconnect));
+    ws.on('message', function (data) {
+      try {
+        let json = JSON.parse(data);
+        if (json.event === 'bidschanged' || json.event === 'askschanged' || json.event === 'tradeschanged')
+          callback(json);
+        if (!Bitkub.options.ignoreTickers && json.event === 'ticker') {
+          //if (Bitkub.options.sanitize && json.data.stream !== undefined)
+          //json.data.symbol = json.data.stream.split('_')[1].toUpperCase() + '/THB';
+          callback(json);
+        }
+        if (!Bitkub.options.ignoreGlobalTickers && json.event === 'global.ticker') {
+          if (Bitkub.options.sanitize)
+            json.data.symbol = json.data.stream.split('_')[1].toUpperCase() + '/THB';
+          callback(json);
+        }
+      } catch (error) {
+        Bitkub.options.log('OrderBook: Parse error: ' + error.message);
       }
     });
     return ws;
@@ -206,24 +244,6 @@ let api = function Bitkub(options = {}) {
   }
 
   /**
-   * Used by bookTickers to format the bids and asks given given symbols
-   * @param {array} data - array of symbols
-   * @return {object} - symbols with their bids and asks data
-   */
-  const bookPriceData = function (data) {
-    let prices = {};
-    for (let obj of data) {
-      prices[obj.symbol] = {
-        bid: obj.bidPrice,
-        bids: obj.bidQty,
-        ask: obj.askPrice,
-        asks: obj.askQty
-      };
-    }
-    return prices;
-  };
-
-  /**
    * Checks whether or not an array contains any duplicate elements
    *  Note(keith1024): at the moment this only works for primitive types,
    *  will require modification to work with objects
@@ -234,17 +254,8 @@ let api = function Bitkub(options = {}) {
     let s = new Set(array);
     return s.size === array.length;
   };
-  return {
 
-    /**
-    * Count decimal places
-    * @param {float} float - get the price precision point
-    * @return {int} - number of place
-    */
-    getPrecision: function (float) {
-      if (!float || Number.isInteger(float)) return 0;
-      return float.toString().split('.')[1].length || 0;
-    },
+  return {
 
     /**
     * Converts an object to an array
@@ -256,7 +267,6 @@ let api = function Bitkub(options = {}) {
         return [Number(key), obj[key]];
       });
     },
-
 
     /**
     * Sets an option given a key and value
@@ -295,9 +305,11 @@ let api = function Bitkub(options = {}) {
       if (typeof opt === 'string') { // Pass json config filename
         Bitkub.options = JSON.parse(file.readFileSync(opt));
       } else Bitkub.options = opt;
-      if (typeof Bitkub.options.sanitize === 'undefined') Bitkub.options.sanitize = default_options.sanitize;
       if (typeof Bitkub.options.reconnect === 'undefined') Bitkub.options.reconnect = default_options.reconnect;
       if (typeof Bitkub.options.verbose === 'undefined') Bitkub.options.verbose = default_options.verbose;
+      if (typeof Bitkub.options.sanitize === 'undefined') Bitkub.options.sanitize = default_options.sanitize;
+      if (typeof Bitkub.options.ignoreTickers === 'undefined') Bitkub.options.ignoreTickers = default_options.ignoreTickers;
+      if (typeof Bitkub.options.ignoreGlobalTickers === 'undefined') Bitkub.options.ignoreGlobalTickers = default_options.ignoreGlobalTickers;
       if (typeof Bitkub.options.log === 'undefined') Bitkub.options.log = default_options.log;
       if (callback) callback();
       return this;
@@ -323,6 +335,17 @@ let api = function Bitkub(options = {}) {
       * @return {WebSocket} the websocket reference
       */
       subscribeCombined: function (url, callback, reconnect = false) {
+        return subscribeCombined(url, callback, reconnect);
+      },
+
+      /**
+      * Subscribe to a generic combined websocket
+      * @param {string} url - the websocket endpoint
+      * @param {function} callback - optional execution callback
+      * @param {boolean} reconnect - subscription callback
+      * @return {WebSocket} the websocket reference
+      */
+      subscribeBook: function (url, callback, reconnect = false) {
         return subscribeCombined(url, callback, reconnect);
       },
 
@@ -354,7 +377,6 @@ let api = function Bitkub(options = {}) {
         let reconnect = function () {
           if (Bitkub.options.reconnect) tickers(symbols, callback);
         };
-
         let subscription;
         if (Array.isArray(symbols)) {
           if (!isArrayUnique(symbols)) throw Error('tickers: "symbols" cannot contain duplicate elements.');
@@ -375,6 +397,7 @@ let api = function Bitkub(options = {}) {
         }
         return subscription.endpoint;
       },
+
       /**
       * Websocket trades
       * @param {array/string} symbols - an array or string of symbols to query
@@ -385,7 +408,6 @@ let api = function Bitkub(options = {}) {
         let reconnect = function () {
           if (Bitkub.options.reconnect) trades(symbols, callback);
         };
-
         let subscription;
         if (Array.isArray(symbols)) {
           if (!isArrayUnique(symbols)) throw Error('trades: "symbols" cannot contain duplicate elements.');
@@ -404,6 +426,20 @@ let api = function Bitkub(options = {}) {
             symbol = symbols;
           subscription = subscribe(symbol.toLowerCase(), callback, reconnect);
         }
+        return subscription.endpoint;
+      },
+
+      /**
+      * Websocket live orderbook
+      * @param {number} symbolId - a number representing the symbol to query
+      * @param {function} callback - callback function
+      * @return {string} the websocket endpoint
+      */
+      book: function book(symbolId, callback) {
+        let reconnect = function () {
+          if (Bitkub.options.reconnect) book(symbolId, callback);
+        };
+        let subscription = subscribeBook(symbolId, callback, reconnect);
         return subscription.endpoint;
       },
     }
